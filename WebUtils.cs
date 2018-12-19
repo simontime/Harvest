@@ -16,9 +16,11 @@ class WebUtils
         var Request = (HttpWebRequest)WebRequest.Create(url);
 
         Request.ClientCertificates.Add(Cert);
-        Request.Accept = All;
+        Request.Accept = url.Contains("aqua") ? "application/json" : All;
         Request.UserAgent = Utils.UA(deviceID);
-        Request.AddRange(0);
+
+        if (url.Contains("atum"))
+            Request.AddRange(0);
 
         if (!url.Contains("aqua"))
             Request.Headers.Add(Edge, File.ReadAllText(ETN));
