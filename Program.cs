@@ -1,8 +1,10 @@
 ﻿using LibHac;
+using LibHac.IO;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using static Utils;
 using static WebUtils;
@@ -15,6 +17,8 @@ namespace Harvest
         {
             var keyFile = Environment.ExpandEnvironmentVariables("%USERPROFILE%/.switch/prod.keys");
             var keysInUserDir = true;
+
+            var getDeltasOnly = false;
 
             #region Pre-execution checks
             if (!File.Exists(keyFile))
@@ -61,6 +65,25 @@ namespace Harvest
                          entryTargets = new List<string>();
 
             var numOfListings = 0;
+
+            if (args.Length == 2)
+            {
+                if (args[1] == "-d")
+                    getDeltasOnly = true;
+                else if (args[0] == "-t")
+                {
+                    var rightsID = args[1];
+                    using (var tikReq = (HttpWebResponse)GET(deviceID, CETKURL(rightsID), false))
+                    using (var strm = tikReq.GetResponseStream())
+                    using (var rd = new BinaryReader(strm))
+                    {
+                        File.WriteAllBytes($"{rightsID}.tik", rd.ReadBytes(0x2C0));
+                        File.WriteAllBytes($"{rightsID}.cert", rd.ReadBytes(0x700));
+                    }
+
+                    return;
+                }
+            }
 
             GET(deviceID, Aqua(deviceID), false);
 
@@ -127,14 +150,14 @@ namespace Harvest
             {
                 using (var meta = (HttpWebResponse)GET(deviceID, ContentURL('a', id), false))
                 using (var rd = new BinaryReader(meta.GetResponseStream()))
-                using (var strm = new MemoryStream(rd.ReadBytes((int)meta.ContentLength)))
+                using (var strm = new MemoryStorage(rd.ReadBytes((int)meta.ContentLength)))
                 {
                     Directory.CreateDirectory(tidTargets[0]);
                     strm.WriteAllBytes($"{tidTargets[0]}/{id}.cnmt.nca");
-                    using (var nca = new Nca(keys, strm, false).OpenSection(0, false))
+                    using (var nca = new Nca(keys, strm, false).OpenSection(0, false, IntegrityCheckLevel.None, false))
                     {
                         var pfs = new Pfs(nca);
-                        var cnmt = new Cnmt(pfs.OpenFile(pfs.Files[0]));
+                        var cnmt = new Cnmt(pfs.OpenFile(pfs.Files[0]).AsStream());
                         foreach (var entry in cnmt.ContentEntries)
                         {
                             string NCAID = entry.NcaId.ToHexString().ToLower();
@@ -150,15 +173,17 @@ namespace Harvest
             {
                 using (var meta = (HttpWebResponse)GET(deviceID, ContentURL('a', idSecondReq), false))
                 using (var read = new BinaryReader(meta.GetResponseStream()))
-                using (var metastrm = new MemoryStream(read.ReadBytes((int)meta.ContentLength)))
+                using (var metastrm = new MemoryStorage(read.ReadBytes((int)meta.ContentLength)))
                 {
                     Directory.CreateDirectory(tidTargets[1]);
                     metastrm.WriteAllBytes($"{tidTargets[1]}/{idSecondReq}.cnmt.nca");
-                    using (var nca = new Nca(keys, metastrm, false).OpenSection(0, false))
+                    using (var nca = new Nca(keys, metastrm, false).OpenSection(0, false, IntegrityCheckLevel.None, false))
                     {
                         var pfs = new Pfs(nca);
-                        var cnmt = new Cnmt(pfs.OpenFile(pfs.Files[0]));
-                        foreach (var entry in cnmt.ContentEntries)
+                        var cnmt = new Cnmt(pfs.OpenFile(pfs.Files[0]).AsStream());
+                        foreach (var entry in getDeltasOnly ? 
+                            cnmt.ContentEntries.Where(e => e.Type == CnmtContentType.DeltaFragment) :
+                            cnmt.ContentEntries)
                         {
                             var ncaID = entry.NcaId.ToHexString().ToLower();
                             using (var request = (HttpWebResponse)GET(deviceID, ContentURL('c', ncaID), false))
@@ -167,7 +192,10 @@ namespace Harvest
 
                             if (entry.Type == CnmtContentType.Program)
                             {
-                                var rightsID = new Nca(keys, File.OpenRead($"{tidTargets[1]}/{ncaID}.nca"), false).Header.RightsId.ToHexString().ToLower();
+                                var rightsID = new Nca(keys, new StreamStorage
+                                    (File.OpenRead($"{tidTargets[1]}/{ncaID}.nca"), false), false)
+                                    .Header.RightsId.ToHexString().ToLower();
+
                                 using (var tikReq = (HttpWebResponse)GET(deviceID, CETKURL(rightsID), false))
                                 using (var strm = tikReq.GetResponseStream())
                                 using (var rd = new BinaryReader(strm))
