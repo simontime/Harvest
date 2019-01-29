@@ -16,13 +16,13 @@ class WebUtils
         var Request = (HttpWebRequest)WebRequest.Create(url);
 
         Request.ClientCertificates.Add(Cert);
-        Request.Accept = url.Contains("aqua") ? "application/json" : All;
+        Request.Accept = (url.Contains("aqua") || url.Contains("sun")) ? "application/json" : All;
         Request.UserAgent = Utils.UA(deviceID);
 
-        if (url.Contains("atum"))
+        if (url.Contains("atum") || url.Contains("atumn"))
             Request.AddRange(0);
 
-        if (!url.Contains("aqua"))
+        if (!url.Contains("aqua") && !url.Contains("sun") && !url.Contains("atumn"))
             Request.Headers.Add(Edge, File.ReadAllText(ETN));
 
         if (returnAsString)

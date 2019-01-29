@@ -53,8 +53,57 @@ namespace Harvest
             var deviceID = Convert.ToInt64(File.ReadAllText("device.id"), 16);
             var keys = ExternalKeys.ReadKeyFile(keysInUserDir ? keyFile : "prod.keys");
 
-            if (args[0] == "-s" || args[0] == "0100000000000816")
-                throw new NotImplementedException("System title downloading has not been implemented yet.");
+            var sysID = "0100000000000816";
+
+            // To-do: Clean up
+            if (args[0] == "-s" || args[0] == sysID)
+            {
+                var JSON = (string)GET(deviceID, SunUrl, true);
+                var Version = args.Length > 1 ? args[1] : (string)JObject.Parse(JSON)["system_update_metas"][0]["title_version"];
+                HEAD(deviceID, nMetaURL('s', sysID, Version, deviceID));
+                var contentID = HEAD(deviceID, nMetaURL('s', sysID, Version, deviceID));
+
+                using (var meta = (HttpWebResponse)GET(deviceID, nContentURL('s', contentID), false))
+                using (var rd = new BinaryReader(meta.GetResponseStream()))
+                using (var strm = new MemoryStorage(rd.ReadBytes((int)meta.ContentLength)))
+                {
+                    Directory.CreateDirectory(sysID);
+                    strm.WriteAllBytes($"{sysID}/{contentID}.cnmt.nca");
+                    using (var nca = new Nca(keys, strm, false).OpenSection(0, false, IntegrityCheckLevel.None, false))
+                    {
+                        var pfs = new Pfs(nca);
+                        var cnmt = new Cnmt(pfs.OpenFile(pfs.Files[0]).AsStream());
+                        foreach (var entry in cnmt.MetaEntries)
+                        {
+                            var tid = $"{entry.TitleId:x16}";
+                            HEAD(deviceID, nMetaURL('a', tid, $"{entry.Version.Version}", deviceID));
+                            var cID = HEAD(deviceID, nMetaURL('a', tid, $"{entry.Version.Version}", deviceID));
+
+                            using (var met2 = (HttpWebResponse)GET(deviceID, nContentURL('a', cID), false))
+                            using (var rdr = new BinaryReader(met2.GetResponseStream()))
+                            using (var strm2 = new MemoryStorage(rdr.ReadBytes((int)meta.ContentLength)))
+                            {
+                                Directory.CreateDirectory($"{sysID}/{tid}");
+                                strm2.WriteAllBytes($"{sysID}/{tid}/{cID}.cnmt.nca");
+                                using (var nca2 = new Nca(keys, strm2, false).OpenSection(0, false, IntegrityCheckLevel.None, false))
+                                {
+                                    var pfs2 = new Pfs(nca2);
+                                    var cnmt2 = new Cnmt(pfs2.OpenFile(pfs2.Files[0]).AsStream());
+                                    foreach (var entry2 in cnmt2.ContentEntries)
+                                    {
+                                        string NCAID = entry2.NcaId.ToHexString().ToLower();
+                                        using (var Req = (HttpWebResponse)GET(deviceID, nContentURL('c', NCAID), false))
+                                        using (var Output = File.OpenWrite($"{sysID}/{tid}/{NCAID}.nca"))
+                                            Req.GetResponseStream().CopyTo(Output);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                return;
+            }
 
             string id = null,
                    idFirstReq = null,
