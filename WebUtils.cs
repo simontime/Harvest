@@ -43,7 +43,9 @@ class WebUtils
         Request.Method = "HEAD";
         Request.Accept = All;
         Request.UserAgent = Utils.UA(deviceID);
-        Request.Headers.Add(Edge, File.ReadAllText(ETN));
+
+        if (!url.Contains("atumn"))
+            Request.Headers.Add(Edge, File.ReadAllText(ETN));
 
         using (var Response = (HttpWebResponse)Request.GetResponse())
             return Response.GetResponseHeader("X-Nintendo-Content-ID");
