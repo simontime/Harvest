@@ -3,7 +3,7 @@
 class Utils
 {
     public static string UA(long DID) => 
-        $"NintendoSDK Firmware/7.0.0-1.0 (platform:NX; did:{DID:x16}; eid:lp1)";
+        $"NintendoSDK Firmware/7.0.0-5.0 (platform:NX; did:{DID:x16}; eid:lp1)";
     public static string Aqua(long DID) => 
         $"https://aqua.hac.lp1.d4c.nintendo.net/required_system_update_meta?device_id={DID:x16}";
     public static string Superfly(string TID) => 
